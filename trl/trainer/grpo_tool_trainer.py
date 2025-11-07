@@ -257,7 +257,8 @@ class GRPOToolTrainer(GRPOTrainer):
 
         # Generate completions using either vLLM or regular generation
         if self.use_vllm:
-            raise NotImplementedError
+            # TODO:
+            raise NotImplementedError("TODO, but not now")
         elif self.use_transformers_paged:
             raise NotImplementedError("Not Implemented")
         else:
