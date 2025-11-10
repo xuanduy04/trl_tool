@@ -87,7 +87,7 @@ DATASET_DIR = get_abs_path_from_scripts_dir("../../../../data/gsm8k_only_answer"
 # gsm8k_only_answer has columns: "text" and "label"
 
 
-if __name__ == "__main__":
+def main():
     parser = TrlParser((ScriptArguments, GRPOConfig, ModelConfig, LMGenerationConfig))
     script_args, training_args, model_args, generation_args = parser.parse_args_and_config()
     model_args.model_name_or_path = get_abs_path_from_scripts_dir(model_args.model_name_or_path)
@@ -145,7 +145,7 @@ if __name__ == "__main__":
         reward_funcs=[think_format_reward, accuracy_reward],
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        # peft_config=get_peft_config(model_args),
+        peft_config=get_peft_config(model_args),
     )
 
     generation_manager = LMGenerationManager(
@@ -160,5 +160,7 @@ if __name__ == "__main__":
 
     # Save and push to hub
     trainer.save_model(training_args.output_dir)
-    if training_args.push_to_hub:
-        trainer.push_to_hub(dataset_name=script_args.dataset_name)
+
+
+if __name__ == "__main__":
+    main()

@@ -118,16 +118,17 @@ class LMGenerationManager:
             if not active_mask.sum():  # If there are no active generations
                 break
             # Pre-inference
+            rollings = self.tensor_fn.prepare_input(rollings, device)
             # remove padding?
-            # print("-------- Removing padding... ", end='')
-            # rollings = self.tensor_fn.cut_to_effective_len(
-            #     rollings,
-            #     keys=['input_ids', 'attention_mask']
-            # )
-            # print("Done")
-            rollings_active = self.tensor_fn.prepare_input({
+            print("-------- Removing padding... ", end='')
+            rollings = self.tensor_fn.cut_to_effective_len(
+                rollings,
+                keys=['input_ids', 'attention_mask']
+            )
+            print("Done")
+            rollings_active = {
                 k: v[active_mask] for k, v in rollings.items()
-            }, device=device)
+            }
 
             # Main inference
             print("-------- Generating responses... ", end='')
@@ -138,8 +139,8 @@ class LMGenerationManager:
             print(f"{responses_ids=}\n({responses_ids.shape=})")
 
             # Post-inference
-            print("-------- _postprocess_responses... ", end='')
-            responses_ids, responses_text = self._postprocess_responses(responses_ids)
+            print("-------- postprocess responses... ", end='')
+            responses_ids, responses_text = self._postprocess_responses(responses_ids, device)
             print("Done")
             print("-------- pad_inactive_responses... ", end='')
             responses_ids, responses_text = self.tensor_fn.pad_inactive_responses(
@@ -168,7 +169,7 @@ class LMGenerationManager:
             valid_tool_call_stats += torch.tensor(is_tool_call, dtype=torch.int)
 
             # Update obs
-            next_obs_ids = self._process_next_obs(next_obs_text)
+            next_obs_ids = self._process_next_obs(next_obs_text, device=device)
             # Update states
             print("-------- Update states... ", end='')
             rollings = self._update_rollings(
@@ -188,19 +189,23 @@ class LMGenerationManager:
         # final LLM rollout
         if active_mask.sum():
             print(f"------ Begin final LLM rollout ------")
-            rollings = self.tensor_fn.cut_to_effective_len(
-                rollings,
-                keys=['input_ids', 'attention_mask']
-            )
+            rollings = self.tensor_fn.prepare_input(rollings, device)
+            # rollings = self.tensor_fn.cut_to_effective_len(
+            #     rollings,
+            #     keys=['input_ids', 'attention_mask']
+            # )
+            rollings_active = {
+                k: v[active_mask] for k, v in rollings.items()
+            }
 
             # Main inference
             responses_ids = unwrapped_model.generate(
-                **rollings, generation_config=generation_config, disable_compile=disable_compile
+                **rollings_active, generation_config=generation_config, disable_compile=disable_compile
             )
             print(f"{responses_ids=}")
 
             # Post-inference
-            responses_ids, responses_text = self._postprocess_responses(responses_ids)
+            responses_ids, responses_text = self._postprocess_responses(responses_ids, device)
             responses_ids, responses_text = self.tensor_fn.pad_inactive_responses(
                 responses_ids, responses_text, active_mask
             )
@@ -227,7 +232,6 @@ class LMGenerationManager:
             right_side = self._update_right_side(
                 right_side,
                 responses_ids,
-                next_obs_ids
             )
             print("Done")
             print(f"{right_side['responses_ids']=}\n({right_side['responses_ids'].shape=})")
@@ -250,7 +254,7 @@ class LMGenerationManager:
         print("END LMGenerationManager's `generate`")
         return responses_ids, self.tensor_fn.create_attention_mask(responses_ids)
 
-    def _batch_tokenize(self, text: List[str]) -> torch.Tensor:
+    def _batch_tokenize(self, text: List[str], device) -> torch.Tensor:
         """Tokenize a batch of text."""
         return self.tokenizer(
             text=text,
@@ -258,9 +262,9 @@ class LMGenerationManager:
             padding="longest",
             padding_side="right",
             add_special_tokens=False,
-        )['input_ids']
+        )['input_ids'].to(device)
 
-    def _postprocess_responses(self, responses_ids: torch.Tensor) -> Tuple[Tensor, List[str]]:
+    def _postprocess_responses(self, responses_ids: torch.Tensor, device) -> Tuple[Tensor, List[str]]:
         """Process responses to stop at tool call operation or answer operation."""
         responses_text: List[str] = self.tokenizer.batch_decode(
             responses_ids,
@@ -273,15 +277,15 @@ class LMGenerationManager:
             else resp
             for resp in responses_text]
 
-        responses_ids = self._batch_tokenize(responses_text)
+        responses_ids = self._batch_tokenize(responses_text, device=device)
         return responses_ids, responses_text
 
-    def _process_next_obs(self, next_obs_text: List[str]) -> torch.Tensor:
+    def _process_next_obs(self, next_obs_text: List[str], device) -> torch.Tensor:
         """
         Process next observations from environment.
         Tokenize observations, then truncate observations if necessary.
         """
-        next_obs_ids = self._batch_tokenize(next_obs_text)
+        next_obs_ids = self._batch_tokenize(next_obs_text, device=device)
 
         if next_obs_ids.shape[1] > self.args.max_obs_length:
             print(
