@@ -91,20 +91,20 @@ class LMGenerationManager:
 
         self.tensor_fn = TensorHelper(pad_token_id=self.tokenizer.pad_token_id)
 
-    def generate(self, unwrapped_model, generate_inputs, generation_config, disable_compile : bool = True):
+    def generate(self, unwrapped_model, generate_inputs: Dict[str, Tensor], generation_config, disable_compile : bool = True):
         print("BEGIN LMGenerationManager's `generate`")
         # Pre-loop:
         print(f"{type(unwrapped_model)=}\n{generate_inputs=}")
-        left_side = {'input_ids': generate_inputs['input_ids']}
-        right_side = {'responses': generate_inputs['input_ids'][:, []],
-                      'tool_output_mask': generate_inputs['input_ids'][:, []]}
+        # left_side = {'input_ids': generate_inputs['input_ids']}
+        right_side: Dict[str, Tensor] = {'responses_ids': generate_inputs['input_ids'][:, []],
+                      'responses_ids_masked_tool_output': generate_inputs['input_ids'][:, []]}
 
-        active_mask = torch.ones(generate_inputs['input_ids'].shape[0], dtype=torch.bool)
-        turns_stats = torch.ones(generate_inputs['input_ids'].shape[0], dtype=torch.int)
-        valid_action_stats = torch.zeros(generate_inputs['input_ids'].shape[0], dtype=torch.int)
-        valid_tool_call_stats = torch.zeros(generate_inputs['input_ids'].shape[0], dtype=torch.int)
+        active_mask: Tensor = torch.ones(generate_inputs['input_ids'].shape[0], dtype=torch.bool)
+        turns_stats: Tensor = torch.ones(generate_inputs['input_ids'].shape[0], dtype=torch.int)
+        valid_action_stats: Tensor = torch.zeros(generate_inputs['input_ids'].shape[0], dtype=torch.int)
+        valid_tool_call_stats: Tensor = torch.zeros(generate_inputs['input_ids'].shape[0], dtype=torch.int)
         active_num_list: List[int] = [active_mask.sum().item()]
-        rollings = generate_inputs
+        rollings: Dict[str, Tensor] = generate_inputs
 
         # Main loop:
         if self.tool_first:
@@ -112,32 +112,43 @@ class LMGenerationManager:
             raise NotImplementedError
 
         for step in range(self.args.max_turns):
+            print(f"------ Begin {step=} ------")
             if not active_mask.sum():  # If there are no active generations
                 break
             # Pre-inference
             # remove padding?
+            print("-------- Removing padding... ", sep='')
             rollings = self.tensor_fn.cut_to_effective_len(
                 rollings,
                 keys=['input_ids', 'attention_mask']
             )
+            print("Done")
 
             # Main inference
+            print("-------- Generating responses... ", sep='')
             responses_ids = unwrapped_model.generate(
                 **rollings, generation_config=generation_config, disable_compile=disable_compile
             )
-            print(f"{responses_ids=}")
+            print("Done")
+            print(f"{responses_ids=}\n({responses_ids.shape=})")
 
             # Post-inference
+            print("-------- _postprocess_responses... ", sep='')
             responses_ids, responses_text = self._postprocess_responses(responses_ids)
+            print("Done")
+            print("-------- pad_inactive_responses... ", sep='')
             responses_ids, responses_text = self.tensor_fn.pad_inactive_responses(
                 responses_ids, responses_text, active_mask
             )
+            print("Done")
 
             # Execute in environment and process observations
+            print("-------- execute_predictions... ", sep='')
             next_obs_text, dones, is_valid_action, is_tool_call = self.execute_predictions(
                 responses_text, active_mask
             )
-            
+            print("Done")
+
             # Update "dones" (i.e. active mask)
             curr_active_mask = ~torch.tensor(dones, dtype=torch.bool)
             active_mask &= curr_active_mask
@@ -154,6 +165,7 @@ class LMGenerationManager:
             # Update obs
             next_obs_ids = self._process_next_obs(next_obs_text)
             # Update states
+            print("-------- Update states... ", sep='')
             rollings = self._update_rollings(
                 rollings,
                 responses_ids,
@@ -164,9 +176,13 @@ class LMGenerationManager:
                 responses_ids,
                 next_obs_ids
             )
+            print("Done")
+            print(f"{rollings['input_ids']=}\n({rollings['input_ids'].shape=})")
+            print(f"{right_side['responses_ids']=}\n({right_side['responses_ids'].shape=})")
 
         # final LLM rollout
         if active_mask.sum():
+            print(f"------ Begin final LLM rollout ------")
             rollings = self.tensor_fn.cut_to_effective_len(
                 rollings,
                 keys=['input_ids', 'attention_mask']
@@ -208,6 +224,8 @@ class LMGenerationManager:
                 responses_ids,
                 next_obs_ids
             )
+            print("Done")
+            print(f"{right_side['responses_ids']=}\n({right_side['responses_ids'].shape=})")
 
         info = {
             'turns_stats': turns_stats.tolist(),
@@ -215,16 +233,17 @@ class LMGenerationManager:
             'valid_action_stats': valid_action_stats.tolist(),
             'valid_tool_call_stats': valid_tool_call_stats.tolist(),
         }
+        print(f"{info=}")
         print("ACTIVE_TRAJ_NUM:", active_num_list)
 
         # final_output = self._compose_final_output(left_side, right_side, info)
         if self.args.mask_tool_output:
-            responses_attention_mask = self.tensor_fn.create_attention_mask(right_side['responses']) \
-                | right_side['tool_output_mask']
+            responses_ids = right_side['responses_ids_masked_tool_output']
         else:
-            responses_attention_mask = self.tensor_fn.create_attention_mask(right_side['responses'])
+            responses_ids = right_side['responses_ids']
 
-        return right_side['responses'], responses_attention_mask
+        print("END LMGenerationManager's `generate`")
+        return responses_ids, self.tensor_fn.create_attention_mask(responses_ids)
 
     def _batch_tokenize(self, text: List[str]) -> torch.Tensor:
         """Tokenize a batch of text."""
@@ -291,30 +310,29 @@ class LMGenerationManager:
         }
         return new_rollings
 
-    def _update_right_side(self, right_side: Dict, responses_ids: torch.Tensor, 
+    def _update_right_side(self, right_side: Dict, curr_responses_ids: torch.Tensor, 
                            next_obs_ids: Optional[torch.Tensor] = None) -> Dict:
         """Update right side state."""
-
-        responses_ids = [right_side['responses'], responses_ids]
-        tool_output_mask = [right_side['tool_output_mask'], responses_ids]
+        responses_ids = [right_side['responses_ids'], curr_responses_ids]
+        responses_ids_masked_tool_output = [right_side['responses_ids_masked_tool_output'], curr_responses_ids]
 
         if next_obs_ids is not None:
             responses_ids.append(next_obs_ids)
-            tool_output_mask = torch.full(next_obs_ids.size(), self.tokenizer.pad_token_id, dtype=next_obs_ids.dtype,
-                                          device=next_obs_ids.device)  # tool's output mask
-            tool_output_mask.append(tool_output_mask)
+            next_obs_mask = torch.full(next_obs_ids.size(), self.tokenizer.pad_token_id, dtype=next_obs_ids.dtype,
+                                       device=next_obs_ids.device)  # tool's output mask
+            responses_ids_masked_tool_output.append(next_obs_mask)
 
         responses_ids = torch.cat(responses_ids, dim=1)
-        tool_output_mask = torch.cat(tool_output_mask, dim=1)
+        responses_ids_masked_tool_output = torch.cat(responses_ids_masked_tool_output, dim=1)
         
         responses_ids, sorted_indices = self.tensor_fn.move_padding_to_one_side(responses_ids, move_pad_to_left=False)
-        tool_output_mask = tool_output_mask.gather(1, sorted_indices)
+        responses_ids_masked_tool_output = responses_ids_masked_tool_output.gather(1, sorted_indices)
 
         effective_len = int(self.tensor_fn.create_attention_mask(responses_ids).sum(dim=1).max())
         max_len = effective_len  # min(self.args.max_prompt_length, effective_len)
 
-        return {'responses': responses_ids[:, :max_len],
-                'tool_output_mask': tool_output_mask[:, :max_len]}
+        return {'responses_ids': responses_ids[:, :max_len],
+                'responses_ids_masked_tool_output': responses_ids_masked_tool_output[:, :max_len]}
 
     def _compose_final_output(self,
                               left_side: Dict,
@@ -327,17 +345,17 @@ class LMGenerationManager:
         # Combine input IDs
         final_output['input_ids'] = torch.cat([
             left_side['input_ids'],
-            right_side['responses']
+            right_side['responses_ids']
         ], dim=1)
 
         # Create attention mask and position ids
         final_output['attention_mask'] = torch.cat([
             self.tensor_fn.create_attention_mask(left_side['input_ids']),
-            self.tensor_fn.create_attention_mask(final_output['responses'])
+            self.tensor_fn.create_attention_mask(final_output['responses_ids'])
         ], dim=1)
-        final_output['tool_output_mask'] = torch.cat([
+        final_output['responses_ids_masked_tool_output'] = torch.cat([
             self.tensor_fn.create_attention_mask(left_side['input_ids']),
-            final_output['tool_output_mask']
+            self.tensor_fn.create_attention_mask(final_output['responses_ids_masked_tool_output'])
         ], dim=1)
 
         # final_output['position_ids'] = self.tensor_fn.create_position_ids(
