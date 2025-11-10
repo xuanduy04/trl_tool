@@ -285,7 +285,8 @@ class GRPOToolTrainer(GRPOTrainer):
                 FSDP.summon_full_params(self.model_wrapped, recurse=False) if self.is_fsdp_enabled else nullcontext(),
             ):
                 completion_ids, completion_mask = self.generation_manager.generate(
-                    unwrapped_model, generate_inputs, generation_config=self.generation_config, disable_compile=True
+                    unwrapped_model, generate_inputs, generation_config=self.generation_config,
+                    disable_compile=True, device=self.args.device
                 )
             # Compute prompt length and extract completion ids
             prompt_ids, prompt_mask = generate_inputs["input_ids"], generate_inputs["attention_mask"]

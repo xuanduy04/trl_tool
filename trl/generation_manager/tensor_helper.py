@@ -1,10 +1,26 @@
 import torch
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Union, Any
+
+from collections.abc import Mapping
 
 
 class TensorHelper:
     def __init__(self, pad_token_id):
         self.pad_token_id = pad_token_id
+
+    def prepare_input(self, data: Union[torch.Tensor, Any], device) -> Union[torch.Tensor, Any]:
+        """
+        Prepares one `data` before feeding it to the model, be it a tensor or a nested list/dictionary of tensors.
+        Copied from huggingface's `Trainer._prepare_input()`
+        """
+        if isinstance(data, Mapping):
+            return type(data)({k: self.prepare_input(v) for k, v in data.items()})
+        elif isinstance(data, (tuple, list)):
+            return type(data)(self.prepare_input(v) for v in data)
+        elif isinstance(data, torch.Tensor):
+            kwargs = {"device": device}
+            return data.to(**kwargs)
+        return data
 
     def cut_to_effective_len(self, tensor_dict: Dict[str, torch.Tensor], 
                              keys: List[str], cut_left: bool = True) -> Dict[str, torch.Tensor]:

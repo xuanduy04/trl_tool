@@ -91,7 +91,8 @@ class LMGenerationManager:
 
         self.tensor_fn = TensorHelper(pad_token_id=self.tokenizer.pad_token_id)
 
-    def generate(self, unwrapped_model, generate_inputs: Dict[str, Tensor], generation_config, disable_compile : bool = True):
+    def generate(self, unwrapped_model, generate_inputs: Dict[str, Tensor], generation_config, 
+                 disable_compile : bool, device):
         print("BEGIN LMGenerationManager's `generate`")
         print(f"{type(unwrapped_model)=}\n{generate_inputs=}")
         # Pre-loop:
@@ -118,16 +119,15 @@ class LMGenerationManager:
                 break
             # Pre-inference
             # remove padding?
-            print("-------- Removing padding... ", end='')
-            rollings = self.tensor_fn.cut_to_effective_len(
-                rollings,
-                keys=['input_ids', 'attention_mask']
-            )
-            print("Done")
-
-            rollings_active = {
+            # print("-------- Removing padding... ", end='')
+            # rollings = self.tensor_fn.cut_to_effective_len(
+            #     rollings,
+            #     keys=['input_ids', 'attention_mask']
+            # )
+            # print("Done")
+            rollings_active = self.tensor_fn.prepare_input({
                 k: v[active_mask] for k, v in rollings.items()
-            }
+            }, device=device)
 
             # Main inference
             print("-------- Generating responses... ", end='')
