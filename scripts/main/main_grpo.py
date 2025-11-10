@@ -148,13 +148,13 @@ if __name__ == "__main__":
         # peft_config=get_peft_config(model_args),
     )
 
-    generation_manager = LMGenerationManager(
-        args=generation_args,
-        processing_class=trainer.processing_class,
-        tool=calculator,
-        tool_first=False,
-    )
-    trainer.set_generation_manager(generation_manager)
+    # generation_manager = LMGenerationManager(
+    #     args=generation_args,
+    #     processing_class=trainer.processing_class,
+    #     tool=calculator,
+    #     tool_first=False,
+    # )
+    # trainer.set_generation_manager(generation_manager)
 
     trainer.train()
 
