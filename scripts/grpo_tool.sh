@@ -1,4 +1,5 @@
-CUDA_AVAILABLE_DEVICES=4,7 \
+CUDA_VISIBLE_DEVICES="" \
+PYTHONPATH=. \
 accelerate launch \
     --config_file ./accelerate_configs/fsdp2.yaml \
     ./main/grpo_tool.py \
