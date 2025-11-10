@@ -351,8 +351,9 @@ class GRPOToolTrainer(GRPOTrainer):
         device = self.accelerator.device
         mode = "train" if self.model.training else "eval"
         
-        inputs = inputs[:3]
-        print(f"{inputs[:3]=}")
+        print(f"{inputs[0]=}")
+        for x in inputs:
+            x["solution"] = x.pop("label")
 
         prompts = [x["prompt"] for x in inputs]
 

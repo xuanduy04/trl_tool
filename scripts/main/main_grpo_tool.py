@@ -114,10 +114,11 @@ if __name__ == "__main__":
     SYSTEM_PROMPT = (
         "A conversation between user and assistant. The user asks a question, and the assistant solves it. The "
         "assistant first thinks about the reasoning process and then provides the user with the answer. "
-        "If the assistant finds they need to perform algebraic calculations, they can call the calculator"
+        "If the assistant needs to perform algebraic calculations, they can call the calculator"
         "with the <calculator></calculator> tags."
         "The reasoning process is enclosed within <think></think> tags."
-        "Example: <think>\nThis is my reasoning.\n</think>\n<calculator>\n18+2\n</calculator>\nAnswer."
+        "The answer is enclosed within <answer></answer> tags."
+        "Example: <think>\nThis is my reasoning.\n</think>\n<calculator>\n18+2\n</calculator>\n<answer>20</answer>."
     )
 
     def make_conversation(example):
@@ -153,7 +154,6 @@ if __name__ == "__main__":
         tool=calculator,
         tool_first=False,
     )
-
     trainer.set_generation_manager(generation_manager)
 
     trainer.train()

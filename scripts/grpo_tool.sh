@@ -2,7 +2,7 @@ CUDA_VISIBLE_DEVICES="" \
 PYTHONPATH=. \
 accelerate launch \
     --config_file ./accelerate_configs/fsdp2.yaml \
-    ./main/grpo_tool.py \
+    ./main/main_grpo_tool.py \
     --model_name_or_path Qwen/Qwen3-0.6B \
     --output_dir gspo-Qwen3-0.6B \
     --learning_rate 1e-5 \

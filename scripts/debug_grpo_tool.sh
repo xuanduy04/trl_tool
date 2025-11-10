@@ -6,7 +6,7 @@ CUDA_VISIBLE_DEVICES="" \
 PYTHONPATH=. \
 accelerate launch \
     --config_file ./accelerate_configs/debug_cpu.yaml \
-    ./main/grpo_tool.py \
+    ./main/main_grpo_tool.py \
     --model_name_or_path ../../../../models/Qwen2.5-0.5B-Instruct \
     --output_dir grpo_tool-Qwen2.5-0.5B-it \
     --learning_rate 1e-5 \
