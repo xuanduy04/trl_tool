@@ -158,7 +158,6 @@ def main():
 
     trainer.train()
 
-    # Save and push to hub
     trainer.save_model(training_args.output_dir)
 
 
