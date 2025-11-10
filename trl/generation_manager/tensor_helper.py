@@ -14,9 +14,9 @@ class TensorHelper:
         Copied from huggingface's `Trainer._prepare_input()`
         """
         if isinstance(data, Mapping):
-            return type(data)({k: self.prepare_input(v) for k, v in data.items()})
+            return type(data)({k: self.prepare_input(v, device) for k, v in data.items()})
         elif isinstance(data, (tuple, list)):
-            return type(data)(self.prepare_input(v) for v in data)
+            return type(data)(self.prepare_input(v, device) for v in data)
         elif isinstance(data, torch.Tensor):
             kwargs = {"device": device}
             return data.to(**kwargs)
