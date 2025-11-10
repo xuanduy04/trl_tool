@@ -133,8 +133,8 @@ if __name__ == "__main__":
     eval_dataset = eval_dataset.map(make_conversation)
     
     _columns_to_remove = ["text"]
-    train_dataset = train_dataset.remove_columns(_columns_to_remove)
-    eval_dataset = eval_dataset.remove_columns(_columns_to_remove)
+    train_dataset = train_dataset.remove_columns(_columns_to_remove).rename_column("label", "solution")
+    eval_dataset = eval_dataset.remove_columns(_columns_to_remove).rename_column("label", "solution")
 
     ################
     # Training
