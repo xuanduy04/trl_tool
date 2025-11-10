@@ -2,9 +2,9 @@ CUDA_VISIBLE_DEVICES="" \
 PYTHONPATH=. \
 accelerate launch \
     --config_file ./accelerate_configs/fsdp2.yaml \
-    ./main/main_grpo_tool.py \
+    ./main/main_grpo.py \
     --model_name_or_path ../../../../../NLP_CORE/BaseModels/Qwen2.5-0.5B \
-    --output_dir Qwen2.5-0.5B-grpo-tool \
+    --output_dir Qwen2.5-0.5B-grpo \
     --learning_rate 1e-5 \
     --dtype bfloat16 \
     --max_prompt_length 2048 \

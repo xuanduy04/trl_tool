@@ -93,8 +93,9 @@ class LMGenerationManager:
 
     def generate(self, unwrapped_model, generate_inputs: Dict[str, Tensor], generation_config, disable_compile : bool = True):
         print("BEGIN LMGenerationManager's `generate`")
-        # Pre-loop:
         print(f"{type(unwrapped_model)=}\n{generate_inputs=}")
+        # Pre-loop:
+
         # left_side = {'input_ids': generate_inputs['input_ids']}
         right_side: Dict[str, Tensor] = {'responses_ids': generate_inputs['input_ids'][:, []],
                       'responses_ids_masked_tool_output': generate_inputs['input_ids'][:, []]}
@@ -117,33 +118,37 @@ class LMGenerationManager:
                 break
             # Pre-inference
             # remove padding?
-            print("-------- Removing padding... ", sep='')
+            print("-------- Removing padding... ", end='')
             rollings = self.tensor_fn.cut_to_effective_len(
                 rollings,
                 keys=['input_ids', 'attention_mask']
             )
             print("Done")
 
+            rollings_active = {
+                k: v[active_mask] for k, v in rollings.items()
+            }
+
             # Main inference
-            print("-------- Generating responses... ", sep='')
+            print("-------- Generating responses... ", end='')
             responses_ids = unwrapped_model.generate(
-                **rollings, generation_config=generation_config, disable_compile=disable_compile
+                **rollings_active, generation_config=generation_config, disable_compile=disable_compile
             )
             print("Done")
             print(f"{responses_ids=}\n({responses_ids.shape=})")
 
             # Post-inference
-            print("-------- _postprocess_responses... ", sep='')
+            print("-------- _postprocess_responses... ", end='')
             responses_ids, responses_text = self._postprocess_responses(responses_ids)
             print("Done")
-            print("-------- pad_inactive_responses... ", sep='')
+            print("-------- pad_inactive_responses... ", end='')
             responses_ids, responses_text = self.tensor_fn.pad_inactive_responses(
                 responses_ids, responses_text, active_mask
             )
             print("Done")
 
             # Execute in environment and process observations
-            print("-------- execute_predictions... ", sep='')
+            print("-------- execute_predictions... ", end='')
             next_obs_text, dones, is_valid_action, is_tool_call = self.execute_predictions(
                 responses_text, active_mask
             )
@@ -165,7 +170,7 @@ class LMGenerationManager:
             # Update obs
             next_obs_ids = self._process_next_obs(next_obs_text)
             # Update states
-            print("-------- Update states... ", sep='')
+            print("-------- Update states... ", end='')
             rollings = self._update_rollings(
                 rollings,
                 responses_ids,
