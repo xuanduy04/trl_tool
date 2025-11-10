@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES="" \
+CUDA_VISIBLE_DEVICES="4,7" \
 PYTHONPATH=. \
 accelerate launch \
     --config_file ./accelerate_configs/fsdp2.yaml \
