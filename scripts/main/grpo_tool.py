@@ -72,19 +72,25 @@ from trl import (
 from trl.generation_manager import LMGenerationConfig, LMGenerationManager
 from trl.rewards import accuracy_reward, think_format_reward
 
-from ..tools import calculator
+from tools.calculator import calculator
 
 
 # Enable logging in a Hugging Face Space
 os.environ.setdefault("TRACKIO_SPACE_ID", "trl-trackio")
 
+SCRIPTS_DIR = Path(__file__).parent
 
-DATASET_DIR = str((Path(__file__).parent / "../../data/gsm8k").resolve)
+def get_abs_path_from_scripts_dir(relpath: str) -> str:
+    return str((SCRIPTS_DIR / relpath).resolve())
+
+DATASET_DIR = get_abs_path_from_scripts_dir("../../../../data/gsm8k_only_answer")
+# gsm8k_only_answer has columns: "text" and "label"
 
 
 if __name__ == "__main__":
     parser = TrlParser((ScriptArguments, GRPOConfig, ModelConfig, LMGenerationConfig))
     script_args, training_args, model_args, generation_args = parser.parse_args_and_config()
+    model_args.model_name_or_path = get_abs_path_from_scripts_dir(model_args.model_name_or_path)
     ################
     # Model & Processor
     ################
@@ -103,8 +109,7 @@ if __name__ == "__main__":
     ################
     # Dataset
     ################
-    print(f"loading dataset from {DATASET_DIR}")
-    train_dataset, eval_dataset = load_dataset(DATASET_DIR, split=["train[:5%]", "test[:5%]"])
+    train_dataset, eval_dataset = load_dataset(DATASET_DIR, split=["train[:1%]", "test[:1%]"])
 
     SYSTEM_PROMPT = (
         "A conversation between user and assistant. The user asks a question, and the assistant solves it. The "
@@ -119,15 +124,16 @@ if __name__ == "__main__":
         return {
             "prompt": [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": example["problem"]},
+                {"role": "user", "content": example["text"]},
             ],
         }
 
     train_dataset = train_dataset.map(make_conversation)
     eval_dataset = eval_dataset.map(make_conversation)
-
-    train_dataset = train_dataset.remove_columns(["messages", "problem"])
-    eval_dataset = eval_dataset.remove_columns(["messages", "problem"])
+    
+    _columns_to_remove = ["text"]
+    train_dataset = train_dataset.remove_columns(_columns_to_remove)
+    eval_dataset = eval_dataset.remove_columns(_columns_to_remove)
 
     ################
     # Training
@@ -138,7 +144,7 @@ if __name__ == "__main__":
         reward_funcs=[think_format_reward, accuracy_reward],
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        peft_config=get_peft_config(model_args),
+        # peft_config=get_peft_config(model_args),
     )
 
     generation_manager = LMGenerationManager(

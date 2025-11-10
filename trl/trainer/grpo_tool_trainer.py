@@ -226,6 +226,7 @@ class GRPOToolTrainer(GRPOTrainer):
                          callbacks=callbacks,
                          optimizers=optimizers,
                          peft_config=peft_config)
+        self._generation_manager = None
     
     def set_generation_manager(self, generation_manager: 'LMGenerationManager'):
         if generation_manager is None:
@@ -240,6 +241,7 @@ class GRPOToolTrainer(GRPOTrainer):
 
     def _generate_single_turn(self, prompts: list[str], images: Optional[list]):
         """Generate a single interaction trajectory for each prompt"""
+        print("BEGIN `_generate_single_turn`")
         device = self.accelerator.device
 
         # If the prompts are conversational and the inputs contain images, we need to convert the prompts from
@@ -273,8 +275,7 @@ class GRPOToolTrainer(GRPOTrainer):
                 add_special_tokens=False,
                 **kwargs,
             )
-            generate_inputs = super()._prepare_inputs(generate_inputs)
-
+            generate_inputs = BaseTrainer._prepare_inputs(self, generate_inputs)
             with (
                 profiling_context(self, "transformers.generate"),
                 unwrap_model_for_generation(
@@ -283,14 +284,11 @@ class GRPOToolTrainer(GRPOTrainer):
                 torch.no_grad(),
                 FSDP.summon_full_params(self.model_wrapped, recurse=False) if self.is_fsdp_enabled else nullcontext(),
             ):
-                prompt_completion_ids, prompt_completion_mask = self.generation_manager.generate(
+                completion_ids, completion_mask  = self.generation_manager.generate(
                     unwrapped_model, generate_inputs, generation_config=self.generation_config, disable_compile=True
                 )
             # Compute prompt length and extract completion ids
             prompt_ids, prompt_mask = generate_inputs["input_ids"], generate_inputs["attention_mask"]
-            prompt_length = prompt_ids.size(1)
-            completion_ids = prompt_completion_ids[:, prompt_length:]
-            completion_mask = prompt_completion_mask[:, prompt_length:]
 
             # Mask everything after the first EOS token
             is_eos = completion_ids == self.eos_token_id
@@ -302,10 +300,12 @@ class GRPOToolTrainer(GRPOTrainer):
             completion_ids = [c[m].tolist() for c, m in zip(completion_ids, completion_eos_mask.bool())]
             logprobs = None  # not used in this case
 
+        print("END `_generate_single_turn`")
         return prompt_ids, prompt_mask, completion_ids, completion_mask, logprobs, forward_kwargs
 
     def _generate(self, prompts: list[str], images: Optional[list]):
         """Main generation function of the trainer class"""
+        print("BEGIN `_generate`")
         device = self.accelerator.device
         mode = "train" if self.model.training else "eval"
 
@@ -341,13 +341,18 @@ class GRPOToolTrainer(GRPOTrainer):
         self._metrics[mode]["completions/min_terminated_length"].append(term_completion_lengths.float().min().item())
         self._metrics[mode]["completions/max_terminated_length"].append(term_completion_lengths.float().max().item())
 
+        print("END `_generate`")
         return prompt_ids, prompt_mask, completion_ids, completion_mask, total_completion_tokens, logprobs, forward_kwargs
 
     def _generate_and_score_completions(
         self, inputs: list[dict[str, Union[torch.Tensor, Any]]]
     ) -> dict[str, Union[torch.Tensor, Any]]:
+        print("BEGIN `_generate_and_score_completions`")
         device = self.accelerator.device
         mode = "train" if self.model.training else "eval"
+        
+        inputs = inputs[:3]
+        print(f"{inputs[:3]=}")
 
         prompts = [x["prompt"] for x in inputs]
 
@@ -592,6 +597,7 @@ class GRPOToolTrainer(GRPOTrainer):
             output["token_type_ids"] = forward_kwargs["token_type_ids"]
         if images is not None:
             output["num_images"] = num_images
+        print("END `_generate_and_score_completions`")
         return output
 
     def compute_liger_loss(self, unwrapped_model, inputs):
@@ -795,7 +801,7 @@ class GRPOToolTrainer(GRPOTrainer):
             metrics = {f"eval_{key}": val for key, val in metrics.items()}
 
         logs = {**logs, **metrics}
-        super().log(logs, start_time)
+        BaseTrainer.log(self, logs, start_time)
         self._metrics[mode].clear()
 
         if self.accelerator.is_main_process and self.log_completions:
@@ -838,4 +844,4 @@ class GRPOToolTrainer(GRPOTrainer):
         else:
             model_name = self.args.hub_model_id.split("/")[-1]
         self.create_model_card(model_name=model_name)
-        super()._save_checkpoint(model, trial)
+        BaseTrainer._save_checkpoint(self, model, trial)

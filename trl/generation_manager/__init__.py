@@ -1,1 +1,1 @@
-from language_models import LMGenerationConfig, LMGenerationManager
+from .language_models import LMGenerationConfig, LMGenerationManager
