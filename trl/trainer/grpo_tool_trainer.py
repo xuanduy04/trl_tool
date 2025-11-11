@@ -285,7 +285,7 @@ class GRPOToolTrainer(GRPOTrainer):
                 torch.no_grad(),
                 FSDP.summon_full_params(self.model_wrapped, recurse=False) if self.is_fsdp_enabled else nullcontext(),
             ):
-                completion_ids, completion_mask = self.generation_manager.generate(
+                completion_ids, completion_mask, completion_tool_output_mask = self.generation_manager.generate(
                     unwrapped_model, generate_inputs, generation_config=self.generation_config,
                     disable_compile=True, device=self.args.device
                 )
@@ -303,7 +303,7 @@ class GRPOToolTrainer(GRPOTrainer):
             logprobs = None  # not used in this case
 
         print("END `_generate_single_turn`")
-        return prompt_ids, prompt_mask, completion_ids, completion_mask, logprobs, forward_kwargs
+        return prompt_ids, prompt_mask, completion_ids, completion_mask, completion_tool_output_mask, logprobs, forward_kwargs
 
     def _generate(self, prompts: list[str], images: Optional[list]):
         """Main generation function of the trainer class"""
@@ -311,7 +311,8 @@ class GRPOToolTrainer(GRPOTrainer):
         device = self.accelerator.device
         mode = "train" if self.model.training else "eval"
 
-        prompt_ids, prompt_mask, completion_ids, completion_mask, logprobs, forward_kwargs = self._generate_single_turn(prompts, images)
+        prompt_ids, prompt_mask, completion_ids, completion_mask, completion_tool_output_mask, logprobs, forward_kwargs \
+            = self._generate_single_turn(prompts, images)
 
         # Get completion length per sequence, used for logging
         prompt_lengths = torch.tensor([len(ids) for ids in prompt_ids], device=device)
@@ -344,7 +345,7 @@ class GRPOToolTrainer(GRPOTrainer):
         self._metrics[mode]["completions/max_terminated_length"].append(term_completion_lengths.float().max().item())
 
         print("END `_generate`")
-        return prompt_ids, prompt_mask, completion_ids, completion_mask, total_completion_tokens, logprobs, forward_kwargs
+        return prompt_ids, prompt_mask, completion_ids, completion_mask, completion_tool_output_mask, total_completion_tokens, logprobs, forward_kwargs
 
     def _generate_and_score_completions(
         self, inputs: list[dict[str, Union[torch.Tensor, Any]]]
