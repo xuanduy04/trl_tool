@@ -60,7 +60,7 @@ import torch
 from datasets import load_dataset
 
 from trl import (
-    GRPOConfig,
+    GRPOToolConfig,
     GRPOToolTrainer,
     ModelConfig,
     ScriptArguments,
@@ -88,7 +88,7 @@ DATASET_DIR = get_abs_path_from_scripts_dir("../../../../data/gsm8k_only_answer"
 
 
 def main():
-    parser = TrlParser((ScriptArguments, GRPOConfig, ModelConfig, LMGenerationConfig))
+    parser = TrlParser((ScriptArguments, GRPOToolConfig, ModelConfig, LMGenerationConfig))
     script_args, training_args, model_args, generation_args = parser.parse_args_and_config()
     model_args.model_name_or_path = get_abs_path_from_scripts_dir(model_args.model_name_or_path)
     ################

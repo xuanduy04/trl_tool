@@ -52,7 +52,7 @@ from ..models import prepare_deepspeed, prepare_fsdp, prepare_peft_model, unwrap
 from ..models.utils import _ForwardRedirection
 from .base_trainer import BaseTrainer
 from .callbacks import SyncRefModelCallback
-from .grpo_config import GRPOConfig
+from .grpo_tool_config import GRPOToolConfig
 from .grpo_trainer import GRPOTrainer
 from .utils import (
     RepeatSampler,
@@ -148,7 +148,7 @@ class GRPOToolTrainer(GRPOTrainer):
                   reward function's signature.
             - A list of reward functions, where each item can independently be any of the above types. Mixing different
             types within the list (e.g., a string model ID and a custom reward function) is allowed.
-        args ([`GRPOConfig`], *optional*):
+        args ([`GRPOToolConfig`], *optional*):
             Configuration for this trainer. If `None`, a default configuration is used.
         train_dataset ([`~datasets.Dataset`] or [`~datasets.IterableDataset`]):
             Dataset to use for training. It must include a column `"prompt"`. Any additional columns in the dataset is
@@ -208,7 +208,7 @@ class GRPOToolTrainer(GRPOTrainer):
         self,
         model: Union[str, PreTrainedModel],
         reward_funcs: Union[RewardFunc, list[RewardFunc]],
-        args: Optional[GRPOConfig],
+        args: Optional[GRPOToolConfig],
         train_dataset: Optional[Union[Dataset, IterableDataset]] = None,
         eval_dataset: Optional[Union[Dataset, IterableDataset, dict[str, Union[Dataset, IterableDataset]]]] = None,
         processing_class: Optional['AutoTokenizer'] = None,
@@ -228,6 +228,7 @@ class GRPOToolTrainer(GRPOTrainer):
                          optimizers=optimizers,
                          peft_config=peft_config)
         self._generation_manager = None
+        self.mask_tool_output = args.mask_tool_output
     
     def set_generation_manager(self, generation_manager: 'LMGenerationManager'):
         if generation_manager is None:
@@ -386,8 +387,7 @@ class GRPOToolTrainer(GRPOTrainer):
         prompt_mask = pad(prompt_mask, padding_value=0, padding_side="left")
         completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids_list]
         completion_mask = [torch.tensor(ids, device=device, dtype=torch.long) for ids in completion_mask_list]
-        completion_tool_output_mask = [torch.tensor(ids, device=device, dtype=torch.long) 
-                                       for ids in completion_tool_output_mask_list]
+        completion_tool_output_mask = [torch.tensor(ids, device=device, dtype=torch.long) for ids in completion_tool_output_mask_list]
         completion_ids = pad(completion_ids, padding_value=self.pad_token_id, padding_side="right")
         completion_mask = pad(completion_mask, padding_value=0, padding_side="right")
         completion_tool_output_mask = pad(completion_tool_output_mask, padding_value=0, padding_side="right")
@@ -632,8 +632,8 @@ class GRPOToolTrainer(GRPOTrainer):
         input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
         attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
         logits_to_keep = completion_ids.size(1)  # we only need to compute the logits for the completion tokens
-        debug_print(completion_ids.shape, completion_mask.shape, completion_tool_output_mask.shape)
-        debug_print(input_ids.shape, attention_mask.shape, logits_to_keep)
+        print(f"{completion_ids.shape=}, {completion_mask.shape=}, {completion_tool_output_mask.shape=}")
+        print(f"{input_ids.shape=}, {attention_mask.shape=}, {logits_to_keep=}")
 
         # Compute the per_token_logps and the entropy at each position in the completion
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
@@ -674,6 +674,8 @@ class GRPOToolTrainer(GRPOTrainer):
         old_per_token_logps = per_token_logps.detach() if old_per_token_logps is None else old_per_token_logps
 
         log_ratio = per_token_logps - old_per_token_logps
+        if self.mask_tool_output:
+            log_ratio = log_ratio * completion_tool_output_mask
         if self.importance_sampling_level == "token":
             log_importance_weights = log_ratio
         elif self.importance_sampling_level == "sequence":
@@ -823,8 +825,3 @@ class GRPOToolTrainer(GRPOTrainer):
         logps = torch.cat(all_logps, dim=0)
         entropies = torch.cat(all_entropies, dim=0) if compute_entropy else None
         return logps, entropies
-
-
-def debug_print(*args, sep=' ', end='\n', file=None, flush=False):
-    formatted = [f"{x=}" for x in args]
-    print(*formatted, sep=sep, end=end, file=file, flush=flush)

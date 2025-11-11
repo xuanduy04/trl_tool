@@ -46,12 +46,6 @@ If I want to give the final answer, I should put the answer between <answer> and
             "help": "the text that the environment returns if the agent's action is invalid."
         }
     )
-    # mask_tool_output: bool = field(
-    #     default=True,
-    #     metadata={
-    #         "help": "Whether the returned `attention mask` will mask tokens corresponding to the tool's output."
-    #     }
-    # )
 
     def __post_init__(self):
         # Check for inconsistencies & argument errors here.

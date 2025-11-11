@@ -80,6 +80,7 @@ _import_structure = {
         "GKDConfig",
         "GKDTrainer",
         "GRPOConfig",
+        "GRPOToolConfig"
         "GRPOToolTrainer",
         "GRPOTrainer",
         "HfPairwiseJudge",
@@ -162,6 +163,7 @@ if TYPE_CHECKING:
         GKDConfig,
         GKDTrainer,
         GRPOConfig,
+        GRPOToolConfig,
         GRPOToolTrainer,
         GRPOTrainer,
         HfPairwiseJudge,
