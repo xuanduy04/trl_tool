@@ -355,7 +355,7 @@ class GRPOToolTrainer(GRPOTrainer):
         device = self.accelerator.device
         mode = "train" if self.model.training else "eval"
         
-        print(f"{inputs[0]=}")
+        # print(f"{inputs[0]=}")
 
         prompts = [x["prompt"] for x in inputs]
 
@@ -497,11 +497,11 @@ class GRPOToolTrainer(GRPOTrainer):
 
         # Compute grouped-wise rewards
         mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
-        print(f"(initial) {mean_grouped_rewards.shape=}")
+        # print(f"(initial) {mean_grouped_rewards.shape=}")
         # Normalize the rewards to compute the advantages
         mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(self.num_generations, dim=0)
         advantages = rewards - mean_grouped_rewards
-        print(f"{rewards_per_func.shape=}, {rewards.shape=}, {mean_grouped_rewards.shape=} ==> {advantages.shape=}")
+        # print(f"{rewards_per_func.shape=}, {rewards.shape=}, {mean_grouped_rewards.shape=} ==> {advantages.shape=}")
 
         if self.scale_rewards in ["group", "none"]:
             # If self.scale_rewards = "none", we'll still log group level std
@@ -520,14 +520,14 @@ class GRPOToolTrainer(GRPOTrainer):
             advantages = advantages / (std_rewards + 1e-4)
 
         # Slice to keep only the local part of the data
-        print(f"Pre-slice  {advantages=}, {advantages.shape=}")
+        # print(f"Pre-slice  {advantages=}, {advantages.shape=}")
         process_slice = slice(
             self.accelerator.process_index * len(prompts),
             (self.accelerator.process_index + 1) * len(prompts),
         )
         all_process_advantages = advantages.clone()  # keep the aggregated advantages for logging
         advantages = advantages[process_slice]
-        print(f"Post-slice {advantages=}, {advantages.shape=}")
+        # print(f"Post-slice {advantages=}, {advantages.shape=}")
 
         # Calculate mean reward per function, but only for samples where the function was applied (non-NaN values)
         for i, reward_func_name in enumerate(self.reward_func_names):
@@ -581,7 +581,7 @@ class GRPOToolTrainer(GRPOTrainer):
                 nanmax(self.accelerator.gather(max_importance_sampling_ratio)).item()
             )
         print("-- Finalize outputs")
-        print(f"{advantages.shape=}, {completion_mask.shape=}")
+        # print(f"{advantages.shape=}, {completion_mask.shape=}")
         output = {
             "prompt_ids": prompt_ids,
             "prompt_mask": prompt_mask,
@@ -632,8 +632,8 @@ class GRPOToolTrainer(GRPOTrainer):
         input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
         attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
         logits_to_keep = completion_ids.size(1)  # we only need to compute the logits for the completion tokens
-        print(f"{completion_ids.shape=}, {completion_mask.shape=}, {completion_tool_output_mask.shape=}")
-        print(f"{input_ids.shape=}, {attention_mask.shape=}, {logits_to_keep=}")
+        # print(f"{completion_ids.shape=}, {completion_mask.shape=}, {completion_tool_output_mask.shape=}")
+        # print(f"{input_ids.shape=}, {attention_mask.shape=}, {logits_to_keep=}")
 
         # Compute the per_token_logps and the entropy at each position in the completion
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
@@ -649,7 +649,7 @@ class GRPOToolTrainer(GRPOTrainer):
             image_sizes=inputs.get("image_sizes"),
             token_type_ids=inputs.get("token_type_ids"),
         )
-        print(f"{per_token_logps.shape=}, {entropies.shape=}")
+        # print(f"{per_token_logps.shape=}, {entropies.shape=}")
 
         if self.top_entropy_quantile < 1.0:
             entropy_mask = self.get_high_entropy_mask(entropies, completion_mask, 1 - self.top_entropy_quantile)
@@ -688,7 +688,7 @@ class GRPOToolTrainer(GRPOTrainer):
             )
         # From here, log_importance_weights (and all subsequent tensors, coef_1, coef_2, etc.) shape depends on
         # importance_sampling_level: "token" level: (B, T); "sequence" level: (B, 1)
-        print(f"{log_ratio.shape=}, {log_importance_weights.shape=} ({self.importance_sampling_level=})")
+        # print(f"{log_ratio.shape=}, {log_importance_weights.shape=} ({self.importance_sampling_level=})")
 
         coef_1 = torch.exp(log_importance_weights)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
@@ -700,7 +700,7 @@ class GRPOToolTrainer(GRPOTrainer):
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
-        print(f"{per_token_loss1.shape=} ({coef_1.shape=})\n{per_token_loss2.shape=} ({coef_2.shape=})")
+        # print(f"{per_token_loss1.shape=} ({coef_1.shape=})\n{per_token_loss2.shape=} ({coef_2.shape=})")
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
 
@@ -710,7 +710,7 @@ class GRPOToolTrainer(GRPOTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        print(f"{per_token_loss.shape=}, {completion_mask.shape=}")
+        # print(f"{per_token_loss.shape=}, {completion_mask.shape=}")
 
         if self.loss_type == "grpo":
             loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()

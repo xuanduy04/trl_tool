@@ -86,7 +86,7 @@ class LMGenerationManager:
     def generate(self, unwrapped_model, generate_inputs: Dict[str, Tensor], generation_config,
                  disable_compile: bool, device):
         print("BEGIN LMGenerationManager's `generate`")
-        print(f"{type(unwrapped_model)=}\n{generate_inputs=}")
+        # print(f"{type(unwrapped_model)=}\n{generate_inputs=}")
         # Pre-loop:
 
         # left_side = {'input_ids': generate_inputs['input_ids']}
@@ -106,7 +106,7 @@ class LMGenerationManager:
             raise NotImplementedError
 
         for step in range(self.args.max_turns):
-            print(f"------ Begin {step=} ------")
+            # print(f"------ Begin {step=} ------")
             if not active_mask.sum():  # If there are no active generations
                 break
             # Pre-inference
@@ -128,7 +128,7 @@ class LMGenerationManager:
                 **rollings_active, generation_config=generation_config, disable_compile=disable_compile
             )
             print("Done")
-            print(f"{responses_ids.shape=}")
+            # print(f"{responses_ids.shape=}")
 
             # Post-inference
             print("-------- postprocess responses... ", end='')
@@ -175,11 +175,11 @@ class LMGenerationManager:
                 next_obs_ids
             )
             print("Done")
-            print(f"{rollings['input_ids'].shape=}, {right_side['responses_ids'].shape=})")
+            # print(f"{rollings['input_ids'].shape=}, {right_side['responses_ids'].shape=})")
 
         # final LLM rollout
         if active_mask.sum():
-            print(f"------ Begin final LLM rollout ------")
+            # print(f"------ Begin final LLM rollout ------")
             rollings = self.tensor_fn.prepare_input(rollings, device)
             # rollings = self.tensor_fn.cut_to_effective_len(
             #     rollings,
@@ -193,7 +193,7 @@ class LMGenerationManager:
             responses_ids = unwrapped_model.generate(
                 **rollings_active, generation_config=generation_config, disable_compile=disable_compile
             )
-            print(f"{responses_ids.shape=}")
+            # print(f"{responses_ids.shape=}")
 
             # Post-inference
             responses_ids, responses_text = self._postprocess_responses(responses_ids, device)
@@ -225,7 +225,7 @@ class LMGenerationManager:
                 responses_ids,
             )
             print("Done")
-            print(f"{right_side['responses_ids'].shape=}")
+            # print(f"{right_side['responses_ids'].shape=}")
 
         info = {
             'turns_stats': turns_stats.tolist(),
@@ -233,7 +233,7 @@ class LMGenerationManager:
             'valid_action_stats': valid_action_stats.tolist(),
             'valid_tool_call_stats': valid_tool_call_stats.tolist(),
         }
-        print(f"{info=}")
+        # print(f"{info=}")
         print("ACTIVE_TRAJ_NUM:", active_num_list)
 
         # final_output = self._compose_final_output(left_side, right_side, info)
