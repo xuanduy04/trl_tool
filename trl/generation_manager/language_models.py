@@ -46,12 +46,12 @@ If I want to give the final answer, I should put the answer between <answer> and
             "help": "the text that the environment returns if the agent's action is invalid."
         }
     )
-    mask_tool_output: bool = field(
-        default=True,
-        metadata={
-            "help": "Whether the returned `attention mask` will mask tokens corresponding to the tool's output."
-        }
-    )
+    # mask_tool_output: bool = field(
+    #     default=True,
+    #     metadata={
+    #         "help": "Whether the returned `attention mask` will mask tokens corresponding to the tool's output."
+    #     }
+    # )
 
     def __post_init__(self):
         # Check for inconsistencies & argument errors here.
@@ -243,13 +243,11 @@ class LMGenerationManager:
         print("ACTIVE_TRAJ_NUM:", active_num_list)
 
         # final_output = self._compose_final_output(left_side, right_side, info)
-        if self.args.mask_tool_output:
-            responses_ids = right_side['responses_ids_masked_tool_output']
-        else:
-            responses_ids = right_side['responses_ids']
+        responses_ids = right_side['responses_ids']
+        all_tool_output_mask = self.tensor_fn.create_attention_mask(right_side['responses_ids_masked_tool_output'])
 
         print("END LMGenerationManager's `generate`")
-        return responses_ids, self.tensor_fn.create_attention_mask(responses_ids)
+        return responses_ids, self.tensor_fn.create_attention_mask(responses_ids), all_tool_output_mask
 
     def _batch_tokenize(self, text: List[str], device) -> torch.Tensor:
         """Tokenize a batch of text."""
