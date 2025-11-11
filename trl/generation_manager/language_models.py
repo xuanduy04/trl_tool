@@ -1,16 +1,13 @@
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
 
-from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
     from transformers import AutoTokenizer
-
-from pandas import DataFrame as DataProto
 
 from .tensor_helper import TensorHelper
 
@@ -70,6 +67,7 @@ If I want to give the final answer, I should put the answer between <answer> and
 
 class LMGenerationManager:
     """Language-model's Generation Manager"""
+
     def __init__(
             self,
             args: LMGenerationConfig,
@@ -91,15 +89,15 @@ class LMGenerationManager:
 
         self.tensor_fn = TensorHelper(pad_token_id=self.tokenizer.pad_token_id)
 
-    def generate(self, unwrapped_model, generate_inputs: Dict[str, Tensor], generation_config, 
-                 disable_compile : bool, device):
+    def generate(self, unwrapped_model, generate_inputs: Dict[str, Tensor], generation_config,
+                 disable_compile: bool, device):
         print("BEGIN LMGenerationManager's `generate`")
         print(f"{type(unwrapped_model)=}\n{generate_inputs=}")
         # Pre-loop:
 
         # left_side = {'input_ids': generate_inputs['input_ids']}
         right_side: Dict[str, Tensor] = {'responses_ids': generate_inputs['input_ids'][:, []],
-                      'responses_ids_masked_tool_output': generate_inputs['input_ids'][:, []]}
+                                         'responses_ids_masked_tool_output': generate_inputs['input_ids'][:, []]}
 
         active_mask: Tensor = torch.ones(generate_inputs['input_ids'].shape[0], dtype=torch.bool)
         turns_stats: Tensor = torch.ones(generate_inputs['input_ids'].shape[0], dtype=torch.int)
@@ -136,7 +134,7 @@ class LMGenerationManager:
                 **rollings_active, generation_config=generation_config, disable_compile=disable_compile
             )
             print("Done")
-            print(f"{responses_ids=}\n({responses_ids.shape=})")
+            print(f"{responses_ids.shape=}")
 
             # Post-inference
             print("-------- postprocess responses... ", end='')
@@ -183,8 +181,7 @@ class LMGenerationManager:
                 next_obs_ids
             )
             print("Done")
-            print(f"{rollings['input_ids']=}\n({rollings['input_ids'].shape=})")
-            print(f"{right_side['responses_ids']=}\n({right_side['responses_ids'].shape=})")
+            print(f"{rollings['input_ids'].shape=}, {right_side['responses_ids'].shape=})")
 
         # final LLM rollout
         if active_mask.sum():
@@ -202,7 +199,7 @@ class LMGenerationManager:
             responses_ids = unwrapped_model.generate(
                 **rollings_active, generation_config=generation_config, disable_compile=disable_compile
             )
-            print(f"{responses_ids=}")
+            print(f"{responses_ids.shape=}")
 
             # Post-inference
             responses_ids, responses_text = self._postprocess_responses(responses_ids, device)
@@ -214,7 +211,7 @@ class LMGenerationManager:
             _, dones, is_valid_action, is_tool_call = self.execute_predictions(
                 responses_text, active_mask
             )
-            
+
             # Update "dones" (i.e. active mask)
             curr_active_mask = ~torch.tensor(dones, dtype=torch.bool)
             active_mask &= curr_active_mask
@@ -234,7 +231,7 @@ class LMGenerationManager:
                 responses_ids,
             )
             print("Done")
-            print(f"{right_side['responses_ids']=}\n({right_side['responses_ids'].shape=})")
+            print(f"{right_side['responses_ids'].shape=}")
 
         info = {
             'turns_stats': turns_stats.tolist(),
@@ -272,7 +269,8 @@ class LMGenerationManager:
         )
 
         responses_text = [
-            resp.split(f'</{self.args.tool_call_tag}>')[0] + f'</{self.args.tool_call_tag}>' if f'</{self.args.tool_call_tag}>' in resp
+            resp.split(f'</{self.args.tool_call_tag}>')[0] + f'</{self.args.tool_call_tag}>'
+            if f'</{self.args.tool_call_tag}>' in resp
             else resp.split('</answer>')[0] + '</answer>' if '</answer>' in resp
             else resp
             for resp in responses_text]
@@ -295,7 +293,7 @@ class LMGenerationManager:
         return next_obs_ids
 
     def _update_rollings(self, rollings, responses_ids: torch.Tensor,
-                              next_obs_ids: torch.Tensor) -> Dict:
+                         next_obs_ids: torch.Tensor) -> Dict:
         """Update rolling state with new responses and observations."""
         # Concatenate and handle padding
         new_input_ids = self.tensor_fn.concatenate_with_padding([
@@ -319,11 +317,13 @@ class LMGenerationManager:
         }
         return new_rollings
 
-    def _update_right_side(self, right_side: Dict, curr_responses_ids: torch.Tensor, 
+    def _update_right_side(self, right_side: Dict, curr_responses_ids: torch.Tensor,
                            next_obs_ids: Optional[torch.Tensor] = None) -> Dict:
         """Update right side state."""
         responses_ids = [right_side['responses_ids'], curr_responses_ids]
         responses_ids_masked_tool_output = [right_side['responses_ids_masked_tool_output'], curr_responses_ids]
+        # responses_ids_masked_tool_output is responses_ids 
+        #   but with all the tool's output turned into pad_tokens.
 
         if next_obs_ids is not None:
             responses_ids.append(next_obs_ids)
@@ -333,7 +333,7 @@ class LMGenerationManager:
 
         responses_ids = torch.cat(responses_ids, dim=1)
         responses_ids_masked_tool_output = torch.cat(responses_ids_masked_tool_output, dim=1)
-        
+
         responses_ids, sorted_indices = self.tensor_fn.move_padding_to_one_side(responses_ids, move_pad_to_left=False)
         responses_ids_masked_tool_output = responses_ids_masked_tool_output.gather(1, sorted_indices)
 
@@ -346,7 +346,7 @@ class LMGenerationManager:
     def _compose_final_output(self,
                               left_side: Dict,
                               right_side: Dict,
-                              info: Dict) -> Tuple[Dict, Dict]:
+                              info: Dict) -> Dict:
         """Compose final generation output."""
         final_output = right_side.copy()
         final_output['prompts_ids'] = left_side['input_ids']
@@ -420,7 +420,8 @@ class LMGenerationManager:
                     is_valid_action.append(True)
                     is_tool_call.append(False)
                 elif action == 'tool_call':
-                    next_obs.append(f'\n\n<{self.args.tool_output_tag}>{tool_output.pop(0).strip()}</{self.args.tool_output_tag}>\n\n')
+                    next_obs.append(
+                        f'\n\n<{self.args.tool_output_tag}>{tool_output.pop(0).strip()}</{self.args.tool_output_tag}>\n\n')
                     dones.append(False)
                     is_valid_action.append(True)
                     is_tool_call.append(True)

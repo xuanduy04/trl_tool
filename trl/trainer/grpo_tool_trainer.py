@@ -681,6 +681,7 @@ class GRPOToolTrainer(GRPOTrainer):
             image_sizes=inputs.get("image_sizes"),
             token_type_ids=inputs.get("token_type_ids"),
         )
+        print(f"{per_token_logps.shape=}, {entropies.shape=}")
 
         if self.top_entropy_quantile < 1.0:
             entropy_mask = self.get_high_entropy_mask(entropies, completion_mask, 1 - self.top_entropy_quantile)
@@ -717,6 +718,7 @@ class GRPOToolTrainer(GRPOTrainer):
             )
         # From here, log_importance_weights (and all subsequent tensors, coef_1, coef_2, etc.) shape depends on
         # importance_sampling_level: "token" level: (B, T); "sequence" level: (B, 1)
+        print(f"{log_ratio.shape=}, {log_importance_weights.shape=} ({self.importance_sampling_level=})")
 
         coef_1 = torch.exp(log_importance_weights)
         coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
@@ -728,6 +730,7 @@ class GRPOToolTrainer(GRPOTrainer):
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        print(f"{per_token_loss1.shape=} ({coef_1.shape=})\n{per_token_loss2.shape=} ({coef_2.shape=})")
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
 
@@ -737,7 +740,7 @@ class GRPOToolTrainer(GRPOTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        print(f"{per_token_loss=} ({per_token_loss.shape=}), {completion_mask=} ({completion_mask.shape=})")
+        print(f"{per_token_loss.shape=}, {completion_mask.shape=}")
 
         if self.loss_type == "grpo":
             loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
