@@ -80,7 +80,7 @@ _import_structure = {
         "GKDConfig",
         "GKDTrainer",
         "GRPOConfig",
-        "GRPOToolConfig"
+        "GRPOToolConfig",
         "GRPOToolTrainer",
         "GRPOTrainer",
         "HfPairwiseJudge",
