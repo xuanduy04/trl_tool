@@ -207,6 +207,8 @@ class GRPOToolTrainer(GRPOTrainer):
             raise ValueError("generation_manager cannot be None")
         if self._generation_manager is not None:
             raise RuntimeError("generation_manager has already been set and cannot be reassigned")
+        if generation_manager.tokenizer is not self.processing_class:
+            raise ValueError("generation_manager.tokenizer must be the same instance as self.tokenizer")
         self._generation_manager = generation_manager
 
     @property
@@ -215,7 +217,7 @@ class GRPOToolTrainer(GRPOTrainer):
 
     def _generate_single_turn(self, prompts: list[str], images: Optional[list]):
         """Generate a single interaction trajectory for each prompt"""
-        print("BEGIN `_generate_single_turn`")
+        # print("BEGIN `_generate_single_turn`")
         device = self.accelerator.device
 
         # If the prompts are conversational and the inputs contain images, we need to convert the prompts from
@@ -275,12 +277,12 @@ class GRPOToolTrainer(GRPOTrainer):
             completion_ids = [c[m].tolist() for c, m in zip(completion_ids, completion_eos_mask.bool())]
             logprobs = None  # not used in this case
 
-        print("END `_generate_single_turn`")
+        # print("END `_generate_single_turn`")
         return prompt_ids, prompt_mask, completion_ids, completion_mask, completion_tool_output_mask, logprobs, forward_kwargs
 
     def _generate(self, prompts: list[str], images: Optional[list]):
         """Main generation function of the trainer class"""
-        print("BEGIN `_generate`")
+        # print("BEGIN `_generate`")
         device = self.accelerator.device
         mode = "train" if self.model.training else "eval"
 
@@ -317,13 +319,13 @@ class GRPOToolTrainer(GRPOTrainer):
         self._metrics[mode]["completions/min_terminated_length"].append(term_completion_lengths.float().min().item())
         self._metrics[mode]["completions/max_terminated_length"].append(term_completion_lengths.float().max().item())
 
-        print("END `_generate`")
+        # print("END `_generate`")
         return prompt_ids, prompt_mask, completion_ids, completion_mask, completion_tool_output_mask, total_completion_tokens, logprobs, forward_kwargs
 
     def _generate_and_score_completions(
         self, inputs: list[dict[str, Union[torch.Tensor, Any]]]
     ) -> dict[str, Union[torch.Tensor, Any]]:
-        print("BEGIN `_generate_and_score_completions`")
+        # print("BEGIN `_generate_and_score_completions`")
         device = self.accelerator.device
         mode = "train" if self.model.training else "eval"
 
@@ -584,7 +586,7 @@ class GRPOToolTrainer(GRPOTrainer):
             output["token_type_ids"] = forward_kwargs["token_type_ids"]
         if images is not None:
             output["num_images"] = num_images
-        print("END `_generate_and_score_completions`")
+        # print("END `_generate_and_score_completions`")
         return output
 
     @profiling_decorator
@@ -599,7 +601,7 @@ class GRPOToolTrainer(GRPOTrainer):
             return self._compute_loss(model, inputs)
 
     def _compute_loss(self, model, inputs):
-        print("BEGIN `_compute_loss`")
+        # print("BEGIN `_compute_loss`")
         # Compute the per-token log probabilities for the model
         prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]
         completion_ids, completion_mask = inputs["completion_ids"], inputs["completion_mask"]
@@ -737,7 +739,7 @@ class GRPOToolTrainer(GRPOTrainer):
         self._metrics[mode]["clip_ratio/high_max"].append(nanmax(gathered_high_clip).item())
         gathered_clip_ratio = self.accelerator.gather(clip_ratio)
         self._metrics[mode]["clip_ratio/region_mean"].append(gathered_clip_ratio.nanmean().item())
-        print("END `_compute_loss`")
+        # print("END `_compute_loss`")
         return loss
 
     @profiling_decorator

@@ -1,5 +1,7 @@
 BASE_MODEL='Qwen2.5-0.5B'
 
+export RESUME_CKPT="../checkpoints/chpt-24"
+
 # REMEMBER TO FIX 'accelerate_configs' file when changing CUDA_VISIBLE_DEVICES
 CUDA_VISIBLE_DEVICES="4,7" \
 PYTHONPATH=. \
