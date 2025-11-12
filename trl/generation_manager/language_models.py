@@ -1,4 +1,5 @@
 import re
+import tqdm
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from typing import TYPE_CHECKING
@@ -85,6 +86,8 @@ class LMGenerationManager:
 
     def generate(self, unwrapped_model, generate_inputs: Dict[str, Tensor], generation_config,
                  disable_compile: bool, device):
+        pbar = tqdm.tqdm(total=self.args.max_turns + int(self.tool_first) + 1,
+                         desc=f"LLM Generation of device '{device}'")
         # print(f"BEGIN LMGenerationManager's `generate`")
         # print(f"{type(unwrapped_model)=}\n{generate_inputs=}")
         # Pre-loop:
@@ -103,6 +106,7 @@ class LMGenerationManager:
         # Main loop:
         if self.tool_first:
             # TODO: detokenize generate_inputs -> call tool -> tokenize generate_inputs & update attention mask
+            pbar.update()
             raise NotImplementedError
 
         for step in range(self.args.max_turns):
@@ -174,6 +178,7 @@ class LMGenerationManager:
                 responses_ids,
                 next_obs_ids
             )
+            pbar.update()
         # print(f"Done")
         # print(f"{rollings['input_ids'].shape=}, {right_side['responses_ids'].shape=})")
 
@@ -224,6 +229,7 @@ class LMGenerationManager:
                 right_side,
                 responses_ids,
             )
+            pbar.update()
         # print(f"Done")
         # print(f"{right_side['responses_ids'].shape=}")
 
@@ -241,6 +247,7 @@ class LMGenerationManager:
         all_tool_output_mask = self.tensor_fn.create_attention_mask(right_side['responses_ids_masked_tool_output'])
 
         # print(f"END LMGenerationManager's `generate`")
+        pbar.close()
         return responses_ids, self.tensor_fn.create_attention_mask(responses_ids), all_tool_output_mask
 
     def _batch_tokenize(self, text: List[str], device) -> torch.Tensor:
