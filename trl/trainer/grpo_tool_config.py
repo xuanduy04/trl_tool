@@ -51,7 +51,7 @@ class GRPOToolConfig(GRPOConfig):
             Number of generations per prompt to sample. The effective batch size (num_processes * per_device_batch_size
             * gradient_accumulation_steps) must be evenly divisible by this value.
         max_completion_length (`int` or `None`, *optional*, defaults to `256`):
-            Maximum length of the generated completion.
+            Maximum length of the generated completion (of each turn).
         ds3_gather_for_generation (`bool`, *optional*, defaults to `True`):
             This setting applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation,
             improving generation speed. However, disabling this option allows training models that exceed the VRAM
@@ -149,7 +149,7 @@ class GRPOToolConfig(GRPOConfig):
             KL coefficient. If `0.0` (default), the reference model is not loaded, reducing memory usage and improving
             training speed.
         num_iterations (`int`, *optional*, defaults to `1`):
-            Number of iterations per batch (denoted as μ in the algorithm).
+            Each trajectory samples are used this many times per batch (denoted as μ in the algorithm).
         epsilon (`float`, *optional*, defaults to `0.2`):
             Epsilon value for clipping.
         delta (`float`, *optional*):

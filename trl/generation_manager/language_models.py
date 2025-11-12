@@ -85,7 +85,7 @@ class LMGenerationManager:
 
     def generate(self, unwrapped_model, generate_inputs: Dict[str, Tensor], generation_config,
                  disable_compile: bool, device):
-        print("BEGIN LMGenerationManager's `generate`")
+        # print(f"BEGIN LMGenerationManager's `generate`")
         # print(f"{type(unwrapped_model)=}\n{generate_inputs=}")
         # Pre-loop:
 
@@ -106,46 +106,46 @@ class LMGenerationManager:
             raise NotImplementedError
 
         for step in range(self.args.max_turns):
-            # print(f"------ Begin {step=} ------")
+            # print(f"------ Begin {step=} out of {self.args.max_turns=} turns ------")
             if not active_mask.sum():  # If there are no active generations
                 break
             # Pre-inference
             rollings = self.tensor_fn.prepare_input(rollings, device)
             # remove padding?
-            print("-------- Removing padding... ", end='')
+            # print(f"-------- Removing padding... ", end='')
             rollings = self.tensor_fn.cut_to_effective_len(
                 rollings,
                 keys=['input_ids', 'attention_mask']
             )
-            print("Done")
+            # print(f"Done")
             rollings_active = {
                 k: v[active_mask] for k, v in rollings.items()
             }
 
             # Main inference
-            print("-------- Generating responses... ", end='')
+            # print(f"-------- Generating responses... ", end='')
             responses_ids = unwrapped_model.generate(
                 **rollings_active, generation_config=generation_config, disable_compile=disable_compile
             )
-            print("Done")
+            # print(f"Done")
             # print(f"{responses_ids.shape=}")
 
             # Post-inference
-            print("-------- postprocess responses... ", end='')
+            # print(f"-------- postprocess responses... ", end='')
             responses_ids, responses_text = self._postprocess_responses(responses_ids, device)
-            print("Done")
-            print("-------- pad_inactive_responses... ", end='')
+            # print(f"Done")
+            # print(f"-------- pad_inactive_responses... ", end='')
             responses_ids, responses_text = self.tensor_fn.pad_inactive_responses(
                 responses_ids, responses_text, active_mask
             )
-            print("Done")
+            # print(f"Done")
 
             # Execute in environment and process observations
-            print("-------- execute_predictions... ", end='')
+            # print(f"-------- execute_predictions... ", end='')
             next_obs_text, dones, is_valid_action, is_tool_call = self.execute_predictions(
                 responses_text, active_mask
             )
-            print("Done")
+            # print(f"Done")
 
             # Update "dones" (i.e. active mask)
             curr_active_mask = ~torch.tensor(dones, dtype=torch.bool)
@@ -163,7 +163,7 @@ class LMGenerationManager:
             # Update obs
             next_obs_ids = self._process_next_obs(next_obs_text, device=device)
             # Update states
-            print("-------- Update states... ", end='')
+            # print(f"-------- Update states... ", end='')
             rollings = self._update_rollings(
                 rollings,
                 responses_ids,
@@ -174,8 +174,8 @@ class LMGenerationManager:
                 responses_ids,
                 next_obs_ids
             )
-            print("Done")
-            # print(f"{rollings['input_ids'].shape=}, {right_side['responses_ids'].shape=})")
+        # print(f"Done")
+        # print(f"{rollings['input_ids'].shape=}, {right_side['responses_ids'].shape=})")
 
         # final LLM rollout
         if active_mask.sum():
@@ -224,8 +224,8 @@ class LMGenerationManager:
                 right_side,
                 responses_ids,
             )
-            print("Done")
-            # print(f"{right_side['responses_ids'].shape=}")
+        # print(f"Done")
+        # print(f"{right_side['responses_ids'].shape=}")
 
         info = {
             'turns_stats': turns_stats.tolist(),
@@ -234,13 +234,13 @@ class LMGenerationManager:
             'valid_tool_call_stats': valid_tool_call_stats.tolist(),
         }
         # print(f"{info=}")
-        print("ACTIVE_TRAJ_NUM:", active_num_list)
+        # print(f"ACTIVE_TRAJ_NUM:", active_num_list)
 
         # final_output = self._compose_final_output(left_side, right_side, info)
         responses_ids = right_side['responses_ids']
         all_tool_output_mask = self.tensor_fn.create_attention_mask(right_side['responses_ids_masked_tool_output'])
 
-        print("END LMGenerationManager's `generate`")
+        # print(f"END LMGenerationManager's `generate`")
         return responses_ids, self.tensor_fn.create_attention_mask(responses_ids), all_tool_output_mask
 
     def _batch_tokenize(self, text: List[str], device) -> torch.Tensor:
@@ -279,7 +279,7 @@ class LMGenerationManager:
 
         if next_obs_ids.shape[1] > self.args.max_obs_length:
             print(
-                f"[WARNING] OBSERVATION TOO LONG, CONSIDER CHANGING YOUR CONFIG, {next_obs_ids.shape[1]=} & {self.args.max_obs_length=}")
+                f"[WARNING] Tool output exceeds token limit, consider increasing `max_obs_length` ({next_obs_ids.shape[1]=} vs {self.args.max_obs_length=})")
             next_obs_ids = next_obs_ids[:, :self.args.max_obs_length]
 
         return next_obs_ids

@@ -12,66 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
-import os
 import textwrap
-from collections import defaultdict, deque
 from contextlib import nullcontext
-from functools import partial
-from pathlib import Path
-from typing import Any, Callable, Optional, Union, TYPE_CHECKING
+from typing import Any, Callable, Optional, TYPE_CHECKING, Union
 
-import datasets
 import torch
 import torch.utils.data
-import transformers
 from accelerate import logging
-from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
+from accelerate.utils import gather_object
 from datasets import Dataset, IterableDataset
-from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.utils.data import DataLoader, Sampler
 from transformers import (
-    AutoConfig,
-    AutoModelForSequenceClassification,
-    GenerationConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
-    ProcessorMixin,
     TrainerCallback,
     is_wandb_available,
 )
-from transformers.trainer_utils import seed_worker
-from transformers.utils import is_datasets_available, is_flash_attn_2_available, is_peft_available, is_rich_available
+from transformers.utils import is_peft_available
 
-from ..data_utils import apply_chat_template, is_conversational, maybe_apply_chat_template, prepare_multimodal_messages
-from ..extras.profiling import profiling_context, profiling_decorator
-from ..extras.vllm_client import VLLMClient
-from ..import_utils import is_liger_kernel_available, is_vllm_available
-from ..models import prepare_deepspeed, prepare_fsdp, prepare_peft_model, unwrap_model_for_generation
-from ..models.utils import _ForwardRedirection
 from .base_trainer import BaseTrainer
-from .callbacks import SyncRefModelCallback
 from .grpo_tool_config import GRPOToolConfig
 from .grpo_trainer import GRPOTrainer
 from .utils import (
-    RepeatSampler,
-    disable_dropout_in_model,
-    ensure_master_addr_port,
     entropy_from_logits,
-    identity,
     nanmax,
     nanmin,
     nanstd,
     pad,
-    print_prompt_completions_sample,
     selective_log_softmax,
-    shuffle_sequence_dict,
-    split_pixel_values_by_grid,
-    split_tensor_dict,
-    unsplit_pixel_values_by_grid,
 )
-
+from ..data_utils import is_conversational, maybe_apply_chat_template
+from ..extras.profiling import profiling_context, profiling_decorator
+from ..import_utils import is_liger_kernel_available, is_vllm_available
+from ..models import unwrap_model_for_generation
 
 if is_peft_available():
     from peft import PeftConfig, PeftModel
@@ -86,12 +59,10 @@ if is_vllm_available():
 if is_wandb_available():
     import wandb
 
-
 if TYPE_CHECKING:
     from torch import Tensor
     from transformers import AutoTokenizer
     from ..generation_manager.language_models import LMGenerationManager
-
 
 logger = logging.get_logger(__name__)
 
@@ -204,6 +175,7 @@ class GRPOToolTrainer(GRPOTrainer):
     }
 
     _generation_manager: 'LMGenerationManager'
+
     def __init__(
         self,
         model: Union[str, PreTrainedModel],
@@ -229,7 +201,7 @@ class GRPOToolTrainer(GRPOTrainer):
                          peft_config=peft_config)
         self._generation_manager = None
         self.mask_tool_output = args.mask_tool_output
-    
+
     def set_generation_manager(self, generation_manager: 'LMGenerationManager'):
         if generation_manager is None:
             raise ValueError("generation_manager cannot be None")
@@ -354,7 +326,7 @@ class GRPOToolTrainer(GRPOTrainer):
         print("BEGIN `_generate_and_score_completions`")
         device = self.accelerator.device
         mode = "train" if self.model.training else "eval"
-        
+
         # print(f"{inputs[0]=}")
 
         prompts = [x["prompt"] for x in inputs]
@@ -387,7 +359,8 @@ class GRPOToolTrainer(GRPOTrainer):
         prompt_mask = pad(prompt_mask, padding_value=0, padding_side="left")
         completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids_list]
         completion_mask = [torch.tensor(ids, device=device, dtype=torch.long) for ids in completion_mask_list]
-        completion_tool_output_mask = [torch.tensor(ids, device=device, dtype=torch.long) for ids in completion_tool_output_mask_list]
+        completion_tool_output_mask = [torch.tensor(ids, device=device, dtype=torch.long) for ids in
+                                       completion_tool_output_mask_list]
         completion_ids = pad(completion_ids, padding_value=self.pad_token_id, padding_side="right")
         completion_mask = pad(completion_mask, padding_value=0, padding_side="right")
         completion_tool_output_mask = pad(completion_tool_output_mask, padding_value=0, padding_side="right")
@@ -429,7 +402,7 @@ class GRPOToolTrainer(GRPOTrainer):
             # distribution mismatch between vLLM and the training model can be large and harm the training.
             generate_every = self.args.steps_per_generation * self.num_iterations  # generation frequency
             if self.args.gradient_accumulation_steps % generate_every != 0 or (
-                self.use_vllm and self.vllm_importance_sampling_correction
+                    self.use_vllm and self.vllm_importance_sampling_correction
             ):
                 old_per_token_logps, _ = self._get_per_token_logps_and_entropies(
                     self.model,
@@ -460,7 +433,8 @@ class GRPOToolTrainer(GRPOTrainer):
                         logits_to_keep,
                         batch_size=batch_size,
                         num_images=num_images,
-                        **forward_kwargs,  # may contain pixel_values, image_grid_thw, pixel_attention_mask and image_sizes
+                        **forward_kwargs,
+                        # may contain pixel_values, image_grid_thw, pixel_attention_mask and image_sizes
                     )
                 else:
                     with self.accelerator.unwrap_model(self.model).disable_adapter():
@@ -471,7 +445,8 @@ class GRPOToolTrainer(GRPOTrainer):
                             logits_to_keep,
                             batch_size=batch_size,
                             num_images=num_images,
-                            **forward_kwargs,  # may contain pixel_values, image_grid_thw, pixel_attention_mask and image_sizes
+                            **forward_kwargs,
+                            # may contain pixel_values, image_grid_thw, pixel_attention_mask and image_sizes
                         )
             else:
                 ref_per_token_logps = None
@@ -660,7 +635,7 @@ class GRPOToolTrainer(GRPOTrainer):
         if self.beta != 0.0:
             ref_per_token_logps = inputs["ref_per_token_logps"]
             per_token_kl = (
-                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
+                    torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
             )
 
         # Compute the loss
@@ -767,35 +742,35 @@ class GRPOToolTrainer(GRPOTrainer):
 
     @profiling_decorator
     def _get_per_token_logps_and_entropies(
-        self,
-        model,
-        input_ids,
-        attention_mask,
-        logits_to_keep,
-        batch_size=None,
-        compute_entropy=False,
-        pixel_values=None,
-        image_grid_thw=None,
-        num_images=None,
-        pixel_attention_mask=None,
-        image_sizes=None,
-        token_type_ids=None,
+            self,
+            model,
+            input_ids,
+            attention_mask,
+            logits_to_keep,
+            batch_size=None,
+            compute_entropy=False,
+            pixel_values=None,
+            image_grid_thw=None,
+            num_images=None,
+            pixel_attention_mask=None,
+            image_sizes=None,
+            token_type_ids=None,
     ) -> dict[str, Optional[torch.Tensor]]:
         """Compute log-probs and (optionally) entropies for each token."""
         batch_size = batch_size or input_ids.size(0)  # Chunk inputs into smaller batches to reduce memory peak
         all_logps = []
         all_entropies = []
         for start in range(0, input_ids.size(0), batch_size):
-            input_ids_batch = input_ids[start : start + batch_size]
-            attention_mask_batch = attention_mask[start : start + batch_size]
+            input_ids_batch = input_ids[start: start + batch_size]
+            attention_mask_batch = attention_mask[start: start + batch_size]
 
             # Build model inputs - check if the model supports logits_to_keep (some models and VLMs don't)
             model_inputs = {"input_ids": input_ids_batch, "attention_mask": attention_mask_batch}
             if image_grid_thw is not None or pixel_values is not None \
-                or pixel_attention_mask is not None or image_sizes is not None:
+                    or pixel_attention_mask is not None or image_sizes is not None:
                 raise NotImplementedError
             if token_type_ids is not None:
-                model_inputs["token_type_ids"] = token_type_ids[start : start + batch_size]
+                model_inputs["token_type_ids"] = token_type_ids[start: start + batch_size]
 
             # Only add logits_to_keep if the model supports it
             if "logits_to_keep" in self.model_kwarg_keys:
