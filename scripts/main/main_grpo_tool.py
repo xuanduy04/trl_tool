@@ -22,14 +22,14 @@ from tools.calculator import calculator
 
 # Enable logging in a Hugging Face Space
 os.environ.setdefault("TRACKIO_SPACE_ID", "trl-trackio")
+from transformers import logging as hf_logging
+hf_logging.set_verbosity_info()
+
 
 SCRIPTS_DIR = Path(__file__).parent
 
 def get_abs_path_from_scripts_dir(relpath: str) -> str:
     return str((SCRIPTS_DIR / relpath).resolve())
-
-DATASET_DIR = get_abs_path_from_scripts_dir("../../../../data/gsm8k_only_answer")
-# gsm8k_only_answer has columns: "text" and "label"
 
 
 def main():
@@ -54,6 +54,8 @@ def main():
     ################
     # Dataset
     ################
+    DATASET_DIR = get_abs_path_from_scripts_dir("../../../../data/gsm8k_only_answer")
+    # gsm8k_only_answer has columns: "text" and "label"
     train_dataset, eval_dataset = load_dataset(DATASET_DIR, split=["train[:1%]", "test[:1%]"])
 
     SYSTEM_PROMPT = (
@@ -102,6 +104,8 @@ def main():
     trainer.set_generation_manager(generation_manager)
 
     ckpt = os.environ.get("RESUME_CKPT", None)
+    if ckpt is not None:
+        ckpt = get_abs_path_from_scripts_dir(ckpt)
     trainer.train(resume_from_checkpoint=ckpt)
 
     trainer.save_model(training_args.output_dir)
